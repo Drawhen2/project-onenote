@@ -1,0 +1,1651 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>OneNote Local Workspace</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Segoe+UI:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap');
+
+    body {
+      font-family: 'Segoe UI', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      user-select: none;
+      overflow: hidden;
+    }
+
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+
+    #noteEditor {
+      user-select: text;
+      outline: none;
+      min-height: calc(100vh - 280px);
+      line-height: 1.65;
+    }
+    #noteEditor:empty:before {
+      content: attr(data-placeholder);
+      color: #9ca3af;
+      pointer-events: none;
+    }
+    #noteEditor ul {
+      list-style-type: disc;
+      padding-left: 1.5rem;
+      margin: 0.4rem 0;
+    }
+    #noteEditor ol {
+      list-style-type: decimal;
+      padding-left: 1.5rem;
+      margin: 0.4rem 0;
+    }
+    #noteEditor pre, #noteEditor code {
+      font-family: 'Consolas', 'Courier New', monospace;
+      background-color: #f1f5f9;
+      border: 1px solid #e2e8f0;
+      border-radius: 4px;
+      padding: 0.15rem 0.4rem;
+      font-size: 0.9em;
+      color: #0f172a;
+    }
+    #noteEditor pre {
+      padding: 0.75rem;
+      overflow-x: auto;
+      margin: 0.5rem 0;
+      display: block;
+    }
+
+    .section-pill {
+      width: 5px;
+      height: 18px;
+      border-radius: 3px;
+      flex-shrink: 0;
+    }
+
+    .drag-over-target {
+      background-color: #f3e8f9 !important;
+      outline: 2px dashed #7719aa;
+    }
+  </style>
+</head>
+<body class="bg-[#f3f2f1] text-[#252423] h-screen flex flex-col">
+
+  <!-- TOP PURPLE HEADER BAR -->
+  <header class="bg-[#7719aa] text-white h-11 px-3 flex items-center justify-between shrink-0 shadow-sm z-30">
+    <div class="flex items-center space-x-2 min-w-0 flex-1">
+      <button onclick="toggleMobileSidebar()" class="md:hidden p-1.5 hover:bg-white/15 rounded text-white" title="Menu Navigasi">
+        <i class="fa-solid fa-bars text-sm"></i>
+      </button>
+      <div class="w-6 h-6 rounded bg-white/15 flex items-center justify-center shrink-0">
+        <i class="fa-solid fa-book-open text-xs"></i>
+      </div>
+      <div class="hidden sm:flex items-center space-x-1 text-white/80">
+        <button onclick="execCmd('undo')" class="p-1.5 hover:bg-white/15 rounded hover:text-white" title="Undo (Ctrl+Z)">
+          <i class="fa-solid fa-rotate-left text-xs"></i>
+        </button>
+        <button onclick="execCmd('redo')" class="p-1.5 hover:bg-white/15 rounded hover:text-white" title="Redo (Ctrl+Y)">
+          <i class="fa-solid fa-rotate-right text-xs"></i>
+        </button>
+      </div>
+      <span id="headerWindowTitle" class="text-xs sm:text-sm font-normal truncate pl-1 opacity-95">
+        OneNote
+      </span>
+    </div>
+
+    <!-- Global Search -->
+    <div class="flex-1 max-w-md mx-2">
+      <div class="relative flex items-center">
+        <i class="fa-solid fa-magnifying-glass absolute left-3 text-[#7719aa] text-xs"></i>
+        <input
+          id="globalSearchInput"
+          type="text"
+          oninput="handleSearch(this.value)"
+          placeholder="Search notes & pages..."
+          class="w-full bg-[#e9d7f4] focus:bg-white text-gray-800 placeholder-gray-600 text-xs sm:text-sm rounded pl-8 pr-7 py-1.5 focus:outline-none transition"
+        />
+        <button id="clearSearchBtn" onclick="clearSearch()" class="hidden absolute right-2 text-gray-500 hover:text-gray-800 text-xs">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- Right Controls -->
+    <div class="flex items-center space-x-2 shrink-0">
+      <span id="saveStatus" class="hidden lg:inline-flex items-center text-[11px] text-white/85 bg-white/10 px-2 py-0.5 rounded">
+        <i class="fa-solid fa-check mr-1.5 text-[10px]"></i>Saved locally
+      </span>
+      <button onclick="openBackupModal()" class="p-1.5 hover:bg-white/15 rounded text-xs" title="Backup / Reset Data">
+        <i class="fa-solid fa-database"></i>
+      </button>
+      <div class="w-7 h-7 rounded-full bg-white text-[#7719aa] font-bold text-xs flex items-center justify-center shadow-sm">
+        FR
+      </div>
+    </div>
+  </header>
+
+  <!-- RIBBON MENU & TOOLBAR -->
+  <div class="bg-[#f3f2f1] border-b border-gray-300 shrink-0 z-20">
+    <div class="flex items-center justify-between px-2 sm:px-4 h-9 text-xs sm:text-[13px]">
+      <div class="flex items-center space-x-1 sm:space-x-3 overflow-x-auto no-scrollbar">
+        <button onclick="openBackupModal()" class="px-2 py-1 hover:bg-gray-200 rounded text-gray-700">File</button>
+        <button onclick="toggleFormattingBar()" class="px-2 py-1 font-semibold text-[#7719aa] border-b-2 border-[#7719aa]">Home</button>
+        <button onclick="insertCodeBlock()" class="px-2 py-1 hover:bg-gray-200 rounded text-gray-700">Insert</button>
+        <button onclick="insertChecklist()" class="px-2 py-1 hover:bg-gray-200 rounded text-gray-700 hidden sm:inline-block">To-Do</button>
+        <button onclick="toggleFullCanvas()" class="px-2 py-1 hover:bg-gray-200 rounded text-gray-700">View</button>
+      </div>
+
+      <div class="flex items-center space-x-2 shrink-0">
+        <button onclick="toggleStickyModal()" class="flex items-center space-x-1.5 bg-white border border-gray-300 hover:bg-gray-50 text-gray-800 px-2.5 py-1 rounded text-xs">
+          <i class="fa-regular fa-note-sticky text-[#7719aa]"></i>
+          <span class="hidden sm:inline">Sticky Notes</span>
+        </button>
+        <button onclick="copyCurrentNote()" class="flex items-center space-x-1.5 bg-[#7719aa] hover:bg-[#5c1284] text-white px-2.5 py-1 rounded text-xs">
+          <i class="fa-regular fa-copy text-[11px]"></i>
+          <span class="hidden sm:inline">Copy</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Rich Text Formatting Sub-Toolbar -->
+    <div id="formattingBar" class="bg-white border-t border-gray-200 px-2 sm:px-4 py-1 flex items-center space-x-1 overflow-x-auto text-gray-700 text-xs">
+      <button onclick="execCmd('bold')" class="p-1.5 hover:bg-gray-100 rounded w-7 h-7 flex items-center justify-center font-bold" title="Bold">B</button>
+      <button onclick="execCmd('italic')" class="p-1.5 hover:bg-gray-100 rounded w-7 h-7 flex items-center justify-center italic font-serif" title="Italic">I</button>
+      <button onclick="execCmd('underline')" class="p-1.5 hover:bg-gray-100 rounded w-7 h-7 flex items-center justify-center underline" title="Underline">U</button>
+      <button onclick="execCmd('strikeThrough')" class="p-1.5 hover:bg-gray-100 rounded w-7 h-7 flex items-center justify-center line-through" title="Strikethrough">S</button>
+      <span class="h-4 w-px bg-gray-300 mx-1"></span>
+      <button onclick="execCmd('insertUnorderedList')" class="p-1.5 hover:bg-gray-100 rounded w-7 h-7 flex items-center justify-center" title="Bullet List">
+        <i class="fa-solid fa-list-ul"></i>
+      </button>
+      <button onclick="execCmd('insertOrderedList')" class="p-1.5 hover:bg-gray-100 rounded w-7 h-7 flex items-center justify-center" title="Numbered List">
+        <i class="fa-solid fa-list-ol"></i>
+      </button>
+      <button onclick="insertChecklist()" class="p-1.5 hover:bg-gray-100 rounded px-2 h-7 flex items-center space-x-1" title="Insert Checkbox">
+        <i class="fa-regular fa-square-check text-[#7719aa]"></i>
+        <span class="hidden md:inline">Checklist</span>
+      </button>
+      <button onclick="insertCodeBlock()" class="p-1.5 hover:bg-gray-100 rounded px-2 h-7 flex items-center space-x-1" title="Insert Code Block">
+        <i class="fa-solid fa-terminal text-[#7719aa]"></i>
+        <span class="hidden md:inline">Code</span>
+      </button>
+      <span class="h-4 w-px bg-gray-300 mx-1"></span>
+      <button onclick="highlightSelection()" class="p-1.5 hover:bg-gray-100 rounded w-7 h-7 flex items-center justify-center text-amber-500" title="Highlight">
+        <i class="fa-solid fa-highlighter"></i>
+      </button>
+      <button onclick="execCmd('removeFormat')" class="p-1.5 hover:bg-gray-100 rounded w-7 h-7 flex items-center justify-center text-gray-500" title="Clear Format">
+        <i class="fa-solid fa-eraser"></i>
+      </button>
+    </div>
+  </div>
+
+  <!-- MAIN WORKSPACE -->
+  <div class="flex-1 flex overflow-hidden relative">
+
+    <!-- MOBILE BACKDROP -->
+    <div id="mobileOverlay" onclick="closeMobilePanels()" class="fixed inset-0 bg-black/40 z-20 hidden md:hidden"></div>
+
+    <!-- PANE 1: LEFT NAVIGATION (NOTEBOOK, GROUPS & SECTIONS) -->
+    <aside id="leftSidebar" class="w-64 bg-[#f3f2f1] border-r border-gray-300 flex flex-col shrink-0 select-none fixed md:static inset-y-0 left-0 z-30 transform -translate-x-full md:translate-x-0 transition-transform duration-200 ease-in-out">
+      
+      <!-- Top Hamburger & Notebook Header -->
+      <div class="p-2 border-b border-gray-200">
+        <div class="flex items-center justify-between px-1 mb-1.5">
+          <button onclick="toggleDesktopSidebar()" class="p-1 hover:bg-gray-200 rounded text-gray-600" title="Sembunyikan Navigasi">
+            <i class="fa-solid fa-bars text-xs"></i>
+          </button>
+          <span class="text-[11px] text-gray-400">Drag / Klik ⋮ untuk atur</span>
+          <button onclick="closeMobilePanels()" class="md:hidden p-1 hover:bg-gray-200 rounded text-gray-600">
+            <i class="fa-solid fa-xmark text-sm"></i>
+          </button>
+        </div>
+
+        <!-- Editable Notebook Name Box -->
+        <div onclick="renameNotebookPrompt()" class="bg-white hover:bg-gray-50 rounded px-2.5 py-2 shadow-2xs border border-gray-200 flex items-center justify-between cursor-pointer group" title="Klik untuk ganti nama Notebook">
+          <div class="flex items-center space-x-2 min-w-0">
+            <div class="w-5 h-5 rounded-xs bg-[#7719aa] text-white flex items-center justify-center text-[10px] shrink-0">
+              <i class="fa-solid fa-book"></i>
+            </div>
+            <span id="notebookTitleDisplay" class="text-xs font-semibold text-gray-800 truncate">
+              My Notebook
+            </span>
+          </div>
+          <i class="fa-solid fa-pen text-[10px] text-gray-400 opacity-0 group-hover:opacity-100"></i>
+        </div>
+      </div>
+
+      <!-- Root Dropzone Info (When dragging a section out of a group) -->
+      <div
+        id="rootDropZone"
+        ondragover="handleDragOver(event)"
+        ondragleave="handleDragLeave(event)"
+        ondrop="handleDropToRoot(event)"
+        class="mx-1.5 mt-1 px-2 py-1 text-[11px] text-gray-400 border border-dashed border-transparent rounded transition text-center hidden"
+      >
+        Lepas di sini untuk pindah ke luar (Root)
+      </div>
+
+      <!-- Sections & Section Groups Tree -->
+      <div
+        id="sectionsTreeContainer"
+        ondragover="handleDragOver(event)"
+        ondrop="handleDropToRoot(event)"
+        class="flex-1 overflow-y-auto py-1.5 px-1.5 space-y-0.5 text-[13px]"
+      ></div>
+
+      <!-- Add Section & Add Section Group Buttons -->
+      <div class="px-2.5 py-2 border-t border-gray-200 flex items-center justify-between text-xs bg-[#f3f2f1]">
+        <button onclick="openSectionModal()" class="text-[#7719aa] hover:bg-[#e9d7f4]/60 px-2 py-1 rounded flex items-center space-x-1.5 font-medium transition">
+          <i class="fa-solid fa-plus text-[11px]"></i>
+          <span>New Section</span>
+        </button>
+        <button onclick="openGroupModal()" class="text-gray-700 hover:text-[#7719aa] hover:bg-gray-200/70 px-2 py-1 rounded flex items-center space-x-1.5 font-medium transition" title="Buat Section Group (Folder)">
+          <i class="fa-solid fa-folder-plus text-[11px]"></i>
+          <span>New Group</span>
+        </button>
+      </div>
+
+      <!-- Quick Notes Footer -->
+      <button onclick="selectQuickNotes()" id="quickNotesBtn" class="px-3 py-2.5 border-t border-gray-300 bg-[#ebe9e7] hover:bg-gray-200 flex items-center justify-between text-xs text-gray-700 shrink-0">
+        <div class="flex items-center space-x-2">
+          <i class="fa-regular fa-file-lines text-gray-600"></i>
+          <span>Quick Notes</span>
+        </div>
+        <span id="quickNotesCount" class="text-[10px] bg-gray-300 text-gray-700 px-1.5 rounded-full">0</span>
+      </button>
+    </aside>
+
+    <!-- PANE 2: MIDDLE PAGES LIST -->
+    <aside id="middlePagesPane" class="w-60 sm:w-64 bg-[#faf9f8] border-r border-gray-300 flex flex-col shrink-0 fixed md:static inset-y-0 left-0 z-20 transform -translate-x-full md:translate-x-0 transition-transform duration-200 ease-in-out">
+      <div class="p-2.5 flex items-center justify-between border-b border-gray-200">
+        <button onclick="addNewPage()" class="flex items-center space-x-2 bg-white hover:bg-[#f3e8f9] text-[#7719aa] border border-gray-200 rounded px-3 py-1.5 text-xs font-medium shadow-2xs transition flex-1 mr-2">
+          <i class="fa-regular fa-square-plus"></i>
+          <span>Add Page</span>
+        </button>
+        <button onclick="sortPagesAlpha()" class="p-1.5 hover:bg-gray-200 rounded text-gray-600 text-xs" title="Urutkan Halaman A-Z">
+          <i class="fa-solid fa-arrow-down-a-z"></i>
+        </button>
+        <button onclick="closeMobilePanels()" class="md:hidden ml-1 p-1.5 hover:bg-gray-200 rounded text-gray-600">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <!-- Active Section Breadcrumb -->
+      <div class="px-3 py-1.5 bg-gray-100 border-b border-gray-200 flex items-center justify-between text-[11px] text-gray-500">
+        <span id="currentSectionLabel" class="font-semibold text-gray-700 truncate">Belum ada Section</span>
+        <span id="pageCountBadge" class="bg-gray-200 text-gray-700 px-1.5 py-0.2 rounded-full text-[10px]">0</span>
+      </div>
+
+      <!-- Pages List -->
+      <div id="pagesListContainer" class="flex-1 overflow-y-auto py-1 px-1.5 space-y-0.5 text-[13px]"></div>
+    </aside>
+
+    <!-- PANE 3: NOTE EDITOR CANVAS -->
+    <main class="flex-1 bg-white flex flex-col overflow-hidden relative">
+      <!-- Top Right Canvas Bar -->
+      <div class="px-4 sm:px-8 pt-3 pb-1 flex items-center justify-between gap-2 shrink-0">
+        <!-- Mobile Quick Switcher -->
+        <div class="flex md:hidden items-center space-x-1 text-xs text-gray-600 truncate">
+          <button onclick="openMobileSections()" class="bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded flex items-center space-x-1">
+            <i class="fa-solid fa-folder-tree text-[#7719aa]"></i>
+            <span id="mobileBreadcrumbSection" class="truncate max-w-[110px]">Sections</span>
+          </button>
+          <span>/</span>
+          <button onclick="openMobilePages()" class="bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded flex items-center space-x-1">
+            <i class="fa-regular fa-file-lines text-[#7719aa]"></i>
+            <span>Pages</span>
+          </button>
+        </div>
+
+        <div class="hidden md:block"></div>
+
+        <!-- Page Actions (Move Page, Delete Page, Expand Canvas) -->
+        <div class="flex items-center space-x-1.5 ml-auto">
+          <button id="movePageBtn" onclick="openMovePageModal()" class="px-2 py-1 text-gray-600 hover:text-[#7719aa] hover:bg-gray-100 rounded text-xs flex items-center space-x-1" title="Pindahkan Halaman ke Section Lain">
+            <i class="fa-solid fa-right-left text-[11px]"></i>
+            <span class="hidden sm:inline">Move Page</span>
+          </button>
+          <button id="deletePageBtn" onclick="deleteCurrentPage()" class="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded text-xs" title="Hapus Halaman Ini">
+            <i class="fa-regular fa-trash-can"></i>
+          </button>
+          <button onclick="toggleFullCanvas()" class="p-1.5 text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded text-xs" title="Perluas Kanvas">
+            <i id="expandIcon" class="fa-solid fa-up-right-and-down-left-from-center"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Empty State Overlay when no Section or Page is active -->
+      <div id="emptyCanvasState" class="flex-1 flex flex-col items-center justify-center p-6 text-center hidden">
+        <div class="w-14 h-14 rounded-full bg-[#f3e8f9] text-[#7719aa] flex items-center justify-center mb-3 text-xl">
+          <i class="fa-regular fa-note-sticky"></i>
+        </div>
+        <h2 id="emptyStateTitle" class="text-base font-semibold text-gray-800 mb-1">Belum Ada Halaman Aktif</h2>
+        <p id="emptyStateDesc" class="text-xs text-gray-500 max-w-xs mb-4">
+          Buat Section terlebih dahulu di panel kiri atau tambahkan halaman baru untuk mulai menulis catatan.
+        </p>
+        <div class="flex items-center space-x-2 text-xs">
+          <button onclick="openSectionModal()" class="px-3 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded font-medium">
+            + New Section
+          </button>
+          <button id="emptyAddPageBtn" onclick="addNewPage()" class="px-3 py-2 bg-[#7719aa] hover:bg-[#5c1284] text-white rounded font-medium">
+            + Add Page
+          </button>
+        </div>
+      </div>
+
+      <!-- Active Editor Container -->
+      <div id="editorContainer" class="flex-1 overflow-y-auto px-4 sm:px-10 pb-20 pt-2">
+        <div class="max-w-3xl">
+          <input
+            id="pageTitleInput"
+            type="text"
+            oninput="updateCurrentPageTitle(this.value)"
+            placeholder="Judul Halaman..."
+            class="w-full text-lg sm:text-xl font-normal text-gray-900 border-b border-gray-300 pb-1.5 focus:outline-none focus:border-[#7719aa] bg-transparent"
+          />
+          <div class="flex items-center space-x-4 text-[11px] sm:text-xs text-gray-400 mt-1.5 select-text">
+            <span id="pageDateText" contenteditable="true" onblur="updateCurrentPageMeta()" class="hover:text-gray-600 focus:outline-none"></span>
+            <span id="pageTimeText" contenteditable="true" onblur="updateCurrentPageMeta()" class="hover:text-gray-600 focus:outline-none"></span>
+          </div>
+        </div>
+
+        <div
+          id="noteEditor"
+          contenteditable="true"
+          data-placeholder="Ketik catatan Anda di sini..."
+          oninput="updateCurrentPageContent()"
+          class="mt-6 text-sm sm:text-[15px] text-gray-800 max-w-4xl focus:outline-none"
+        ></div>
+      </div>
+    </main>
+  </div>
+
+  <!-- MOBILE BOTTOM NAVIGATION BAR -->
+  <nav class="md:hidden bg-white border-t border-gray-300 h-12 flex items-center justify-around text-xs text-gray-600 shrink-0 z-30">
+    <button onclick="openMobileSections()" class="flex flex-col items-center justify-center flex-1 py-1 hover:text-[#7719aa]">
+      <i class="fa-solid fa-folder-tree text-sm mb-0.5"></i>
+      <span class="text-[10px]">Sections</span>
+    </button>
+    <button onclick="openMobilePages()" class="flex flex-col items-center justify-center flex-1 py-1 hover:text-[#7719aa]">
+      <i class="fa-regular fa-copy text-sm mb-0.5"></i>
+      <span class="text-[10px]">Pages</span>
+    </button>
+    <button onclick="addNewPage()" class="flex flex-col items-center justify-center flex-1 py-1 text-[#7719aa] font-semibold">
+      <i class="fa-solid fa-circle-plus text-base mb-0.5"></i>
+      <span class="text-[10px]">Add Page</span>
+    </button>
+    <button onclick="openSectionModal()" class="flex flex-col items-center justify-center flex-1 py-1 hover:text-[#7719aa]">
+      <i class="fa-solid fa-folder-plus text-sm mb-0.5"></i>
+      <span class="text-[10px]">New Sec</span>
+    </button>
+  </nav>
+
+  <!-- MODAL: CREATE / EDIT / MOVE SECTION -->
+  <div id="sectionModal" class="fixed inset-0 bg-black/40 z-50 hidden items-center justify-center p-4">
+    <div class="bg-white rounded-lg shadow-xl max-w-sm w-full p-5 text-xs">
+      <div class="flex items-center justify-between mb-3">
+        <h3 id="sectionModalTitle" class="text-sm font-semibold text-gray-800">Buat Section Baru</h3>
+        <button onclick="closeSectionModal()" class="text-gray-400 hover:text-gray-700"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="space-y-3">
+        <div>
+          <label class="block text-gray-600 mb-1 font-medium">Nama Section</label>
+          <input id="sectionNameInput" type="text" placeholder="Masukkan nama section..." class="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:border-[#7719aa]" />
+        </div>
+        <div>
+          <label class="block text-gray-600 mb-1 font-medium">Lokasi / Pindahkan ke Section Group</label>
+          <select id="sectionParentSelect" class="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:border-[#7719aa] bg-white"></select>
+        </div>
+        <div>
+          <label class="block text-gray-600 mb-1 font-medium">Warna Tab Section</label>
+          <div id="colorPickerRow" class="flex items-center space-x-2 pt-1">
+            <button type="button" onclick="selectTabColor('#7719aa')" class="w-6 h-6 rounded-full bg-[#7719aa]"></button>
+            <button type="button" onclick="selectTabColor('#2563eb')" class="w-6 h-6 rounded-full bg-[#2563eb]"></button>
+            <button type="button" onclick="selectTabColor('#16a34a')" class="w-6 h-6 rounded-full bg-[#16a34a]"></button>
+            <button type="button" onclick="selectTabColor('#eab308')" class="w-6 h-6 rounded-full bg-[#eab308]"></button>
+            <button type="button" onclick="selectTabColor('#dc2626')" class="w-6 h-6 rounded-full bg-[#dc2626]"></button>
+            <button type="button" onclick="selectTabColor('#db2777')" class="w-6 h-6 rounded-full bg-[#db2777]"></button>
+            <button type="button" onclick="selectTabColor('#0891b2')" class="w-6 h-6 rounded-full bg-[#0891b2]"></button>
+            <button type="button" onclick="selectTabColor('#f97316')" class="w-6 h-6 rounded-full bg-[#f97316]"></button>
+          </div>
+        </div>
+
+        <!-- Reorder & Delete Controls (Only visible in Edit Mode) -->
+        <div id="sectionEditExtraActions" class="pt-3 border-t border-gray-200 hidden space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="text-gray-600 font-medium">Atur Urutan Posisi:</span>
+            <div class="space-x-1">
+              <button type="button" onclick="reorderEditingSection(-1)" class="px-2.5 py-1 bg-gray-100 hover:bg-gray-200 rounded text-gray-700">
+                <i class="fa-solid fa-arrow-up mr-1"></i>Naik
+              </button>
+              <button type="button" onclick="reorderEditingSection(1)" class="px-2.5 py-1 bg-gray-100 hover:bg-gray-200 rounded text-gray-700">
+                <i class="fa-solid fa-arrow-down mr-1"></i>Turun
+              </button>
+            </div>
+          </div>
+          <button type="button" onclick="deleteEditingSection()" class="w-full py-1.5 text-red-600 hover:bg-red-50 border border-red-200 rounded font-medium">
+            <i class="fa-regular fa-trash-can mr-1"></i>Hapus Section Ini
+          </button>
+        </div>
+      </div>
+
+      <div class="flex justify-end space-x-2 mt-5">
+        <button onclick="closeSectionModal()" class="px-3 py-1.5 rounded border border-gray-300 text-gray-600 hover:bg-gray-100">Batal</button>
+        <button onclick="saveSectionModal()" class="px-3.5 py-1.5 rounded bg-[#7719aa] text-white hover:bg-[#5c1284] font-medium">Simpan</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: CREATE / EDIT / MOVE SECTION GROUP -->
+  <div id="groupModal" class="fixed inset-0 bg-black/40 z-50 hidden items-center justify-center p-4">
+    <div class="bg-white rounded-lg shadow-xl max-w-sm w-full p-5 text-xs">
+      <div class="flex items-center justify-between mb-3">
+        <h3 id="groupModalTitle" class="text-sm font-semibold text-gray-800">Buat Section Group (Folder)</h3>
+        <button onclick="closeGroupModal()" class="text-gray-400 hover:text-gray-700"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="space-y-3">
+        <div>
+          <label class="block text-gray-600 mb-1 font-medium">Nama Section Group</label>
+          <input id="groupNameInput" type="text" placeholder="Contoh: Project Kantor" class="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:border-[#7719aa]" />
+        </div>
+
+        <!-- Reorder & Delete Group Controls (Only in Edit Mode) -->
+        <div id="groupEditExtraActions" class="pt-3 border-t border-gray-200 hidden space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="text-gray-600 font-medium">Urutan Folder Group:</span>
+            <div class="space-x-1">
+              <button type="button" onclick="reorderEditingGroup(-1)" class="px-2.5 py-1 bg-gray-100 hover:bg-gray-200 rounded text-gray-700">
+                <i class="fa-solid fa-arrow-up mr-1"></i>Naik
+              </button>
+              <button type="button" onclick="reorderEditingGroup(1)" class="px-2.5 py-1 bg-gray-100 hover:bg-gray-200 rounded text-gray-700">
+                <i class="fa-solid fa-arrow-down mr-1"></i>Turun
+              </button>
+            </div>
+          </div>
+          <button type="button" onclick="deleteEditingGroup()" class="w-full py-1.5 text-red-600 hover:bg-red-50 border border-red-200 rounded font-medium">
+            <i class="fa-regular fa-trash-can mr-1"></i>Hapus Group (Pindahkan Section ke Root)
+          </button>
+        </div>
+      </div>
+
+      <div class="flex justify-end space-x-2 mt-5">
+        <button onclick="closeGroupModal()" class="px-3 py-1.5 rounded border border-gray-300 text-gray-600 hover:bg-gray-100">Batal</button>
+        <button onclick="saveGroupModal()" class="px-3.5 py-1.5 rounded bg-[#7719aa] text-white hover:bg-[#5c1284] font-medium">Simpan</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: MOVE / REORDER PAGE -->
+  <div id="movePageModal" class="fixed inset-0 bg-black/40 z-50 hidden items-center justify-center p-4">
+    <div class="bg-white rounded-lg shadow-xl max-w-sm w-full p-5 text-xs">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="text-sm font-semibold text-gray-800">Atur / Pindahkan Halaman</h3>
+        <button onclick="closeMovePageModal()" class="text-gray-400 hover:text-gray-700"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="space-y-3">
+        <div>
+          <label class="block text-gray-600 mb-1 font-medium">Pindahkan ke Section:</label>
+          <select id="movePageTargetSelect" class="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:border-[#7719aa] bg-white"></select>
+        </div>
+        <div class="pt-2 border-t border-gray-200 flex items-center justify-between">
+          <span class="text-gray-600 font-medium">Urutan Halaman:</span>
+          <div class="space-x-1">
+            <button type="button" onclick="reorderCurrentPage(-1)" class="px-2.5 py-1 bg-gray-100 hover:bg-gray-200 rounded text-gray-700">
+              <i class="fa-solid fa-arrow-up mr-1"></i>Naik
+            </button>
+            <button type="button" onclick="reorderCurrentPage(1)" class="px-2.5 py-1 bg-gray-100 hover:bg-gray-200 rounded text-gray-700">
+              <i class="fa-solid fa-arrow-down mr-1"></i>Turun
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="flex justify-end space-x-2 mt-5">
+        <button onclick="closeMovePageModal()" class="px-3 py-1.5 rounded border border-gray-300 text-gray-600 hover:bg-gray-100">Batal</button>
+        <button onclick="confirmMovePage()" class="px-3.5 py-1.5 rounded bg-[#7719aa] text-white hover:bg-[#5c1284] font-medium">Pindahkan</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- DRAWER: STICKY NOTES -->
+  <div id="stickyModal" class="fixed right-4 bottom-14 sm:bottom-6 w-80 bg-[#fff9d1] border border-amber-300 rounded-lg shadow-xl z-40 hidden flex-col overflow-hidden">
+    <div class="bg-[#fde047] px-3 py-2 flex items-center justify-between text-xs font-semibold text-amber-950">
+      <span><i class="fa-regular fa-note-sticky mr-1.5"></i>Sticky Notes Cepat</span>
+      <button onclick="toggleStickyModal()" class="hover:bg-amber-400/50 rounded p-1">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+    <textarea
+      id="stickyTextarea"
+      oninput="saveStickyNote(this.value)"
+      placeholder="Tulis catatan tempel cepat di sini..."
+      class="w-full h-48 p-3 bg-[#fff9d1] text-xs text-gray-800 focus:outline-none resize-none leading-relaxed"
+    ></textarea>
+  </div>
+
+  <!-- MODAL: BACKUP / RESTORE / CLEAR LOCAL DATA -->
+  <div id="backupModal" class="fixed inset-0 bg-black/40 z-50 hidden items-center justify-center p-4">
+    <div class="bg-white rounded-lg shadow-xl max-w-md w-full p-5 text-xs">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="text-sm font-semibold text-gray-800">Manajemen Data Lokal (LocalStorage)</h3>
+        <button onclick="closeBackupModal()" class="text-gray-400 hover:text-gray-700"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <p class="text-gray-600 mb-4 leading-relaxed">
+        Seluruh Section Group, Section, dan Halaman tersimpan otomatis di browser Anda. Anda bisa mengekspor ke file JSON atau mengosongkan ulang seluruh data.
+      </p>
+      <div class="space-y-2.5">
+        <button onclick="exportDataJSON()" class="w-full py-2 px-3 bg-[#7719aa] hover:bg-[#5c1284] text-white rounded flex items-center justify-center space-x-2 font-medium">
+          <i class="fa-solid fa-download"></i>
+          <span>Export Backup (.JSON)</span>
+        </button>
+        <label class="w-full py-2 px-3 bg-gray-100 hover:bg-gray-200 text-gray-800 border border-gray-300 rounded flex items-center justify-center space-x-2 cursor-pointer font-medium">
+          <i class="fa-solid fa-upload"></i>
+          <span>Import / Restore File (.JSON)</span>
+          <input type="file" accept=".json" onchange="importDataJSON(event)" class="hidden" />
+        </label>
+        <button onclick="clearAllData()" class="w-full py-2 px-3 text-red-600 hover:bg-red-50 border border-red-200 rounded flex items-center justify-center space-x-2 font-medium">
+          <i class="fa-regular fa-trash-can"></i>
+          <span>Kosongkan Semua Data (Reset Kosong)</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const STORAGE_KEY = 'onenote_clean_workspace_v2';
+    const STICKY_KEY = 'onenote_clean_sticky_v2';
+
+    let selectedTabColor = '#7719aa';
+    let editingSectionId = null;
+    let editingGroupId = null;
+    let draggedSectionId = null;
+    let isFullCanvas = false;
+    let searchQuery = '';
+
+    // Initial Clean / Empty State
+    const emptyNotebookTemplate = {
+      notebookName: 'My Notebook',
+      activeSectionId: null,
+      activePageId: null,
+      quickNotes: {
+        id: 'sec_quick_notes',
+        name: 'Quick Notes',
+        color: '#64748b',
+        isQuickNote: true,
+        pages: []
+      },
+      rootSections: [],
+      groups: []
+    };
+
+    let appData = loadData();
+
+    function loadData() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (!parsed.quickNotes) {
+            parsed.quickNotes = JSON.parse(JSON.stringify(emptyNotebookTemplate.quickNotes));
+          }
+          return parsed;
+        }
+      } catch (e) {
+        console.error('Gagal membaca localStorage:', e);
+      }
+      return JSON.parse(JSON.stringify(emptyNotebookTemplate));
+    }
+
+    function saveData() {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(appData));
+        const badge = document.getElementById('saveStatus');
+        if (badge) {
+          badge.innerHTML = '<i class="fa-solid fa-check mr-1.5 text-[10px]"></i>Saved locally';
+        }
+      } catch (e) {
+        console.error('Gagal menyimpan localStorage:', e);
+      }
+    }
+
+    // Helper: Find Section & Its Parent Container
+    function findSectionLocation(sectionId) {
+      if (!sectionId) return null;
+      if (appData.quickNotes && appData.quickNotes.id === sectionId) {
+        return {
+          section: appData.quickNotes,
+          parentType: 'QUICK',
+          parentGroup: null,
+          list: [appData.quickNotes],
+          index: 0
+        };
+      }
+      const rootIdx = appData.rootSections.findIndex(s => s.id === sectionId);
+      if (rootIdx !== -1) {
+        return {
+          section: appData.rootSections[rootIdx],
+          parentType: 'ROOT',
+          parentGroup: null,
+          list: appData.rootSections,
+          index: rootIdx
+        };
+      }
+      for (const grp of appData.groups) {
+        const secIdx = grp.sections.findIndex(s => s.id === sectionId);
+        if (secIdx !== -1) {
+          return {
+            section: grp.sections[secIdx],
+            parentType: 'GROUP',
+            parentGroup: grp,
+            list: grp.sections,
+            index: secIdx
+          };
+        }
+      }
+      return null;
+    }
+
+    function getAllSectionsFlat() {
+      const list = [];
+      appData.rootSections.forEach(s => list.push({ section: s, groupName: null }));
+      appData.groups.forEach(g => {
+        g.sections.forEach(s => list.push({ section: s, groupName: g.name }));
+      });
+      if (appData.quickNotes) {
+        list.push({ section: appData.quickNotes, groupName: null });
+      }
+      return list;
+    }
+
+    // Render Left Navigation Tree
+    function renderSectionsTree() {
+      document.getElementById('notebookTitleDisplay').textContent = appData.notebookName || 'My Notebook';
+      document.getElementById('quickNotesCount').textContent = appData.quickNotes.pages.length;
+
+      const qnBtn = document.getElementById('quickNotesBtn');
+      if (appData.activeSectionId === appData.quickNotes.id) {
+        qnBtn.classList.add('bg-white', 'font-semibold', 'text-[#7719aa]');
+        qnBtn.classList.remove('bg-[#ebe9e7]');
+      } else {
+        qnBtn.classList.remove('bg-white', 'font-semibold', 'text-[#7719aa]');
+        qnBtn.classList.add('bg-[#ebe9e7]');
+      }
+
+      const container = document.getElementById('sectionsTreeContainer');
+
+      if (appData.rootSections.length === 0 && appData.groups.length === 0) {
+        container.innerHTML = `
+          <div class="text-center py-8 px-3 text-xs text-gray-400">
+            <p class="mb-2">Belum ada Section atau Group.</p>
+            <p class="text-[11px]">Klik <b>+ New Section</b> atau <b>+ New Group</b> di bawah untuk membuat struktur baru.</p>
+          </div>
+        `;
+        return;
+      }
+
+      let html = '';
+
+      // 1. Root Sections
+      appData.rootSections.forEach(sec => {
+        const isActive = sec.id === appData.activeSectionId;
+        html += `
+          <div
+            draggable="true"
+            ondragstart="handleDragStart(event, '${sec.id}')"
+            ondragend="handleDragEnd(event)"
+            onclick="selectSection('${sec.id}')"
+            class="group flex items-center justify-between px-2 py-1.5 rounded cursor-pointer transition ${isActive ? 'bg-white font-semibold shadow-2xs text-gray-900' : 'hover:bg-gray-200/70 text-gray-700'}"
+          >
+            <div class="flex items-center space-x-2.5 min-w-0">
+              <span class="section-pill" style="background-color: ${sec.color}"></span>
+              <span class="truncate">${escapeHtml(sec.name)}</span>
+            </div>
+            <button
+              onclick="openEditSectionModal(event, '${sec.id}')"
+              class="opacity-70 md:opacity-0 group-hover:opacity-100 text-gray-400 hover:text-[#7719aa] px-1.5 py-0.5 rounded"
+              title="Edit / Pindahkan Section"
+            >
+              <i class="fa-solid fa-ellipsis-vertical text-xs"></i>
+            </button>
+          </div>
+        `;
+      });
+
+      // 2. Section Groups (Folders)
+      appData.groups.forEach(grp => {
+        const chevron = grp.expanded ? 'fa-chevron-down' : 'fa-chevron-right';
+        html += `
+          <div
+            class="pt-1 rounded transition"
+            ondragover="handleDragOver(event)"
+            ondragleave="handleDragLeave(event)"
+            ondrop="handleDropToGroup(event, '${grp.id}')"
+          >
+            <div
+              onclick="toggleGroup('${grp.id}')"
+              class="group flex items-center justify-between px-2 py-1.5 rounded cursor-pointer hover:bg-gray-200/70 text-gray-800 font-medium"
+            >
+              <div class="flex items-center space-x-2 min-w-0">
+                <i class="fa-solid ${chevron} text-[10px] text-gray-500 w-3 text-center"></i>
+                <i class="fa-regular fa-folder text-xs text-[#7719aa]"></i>
+                <span class="truncate">${escapeHtml(grp.name)}</span>
+                <span class="text-[10px] text-gray-400">(${grp.sections.length})</span>
+              </div>
+              <div class="flex items-center space-x-0.5">
+                <button
+                  onclick="openSectionModalForGroup(event, '${grp.id}')"
+                  class="opacity-70 md:opacity-0 group-hover:opacity-100 text-gray-400 hover:text-[#7719aa] px-1 py-0.5 rounded"
+                  title="Tambah Section di Group ini"
+                >
+                  <i class="fa-solid fa-plus text-[10px]"></i>
+                </button>
+                <button
+                  onclick="openEditGroupModal(event, '${grp.id}')"
+                  class="opacity-70 md:opacity-0 group-hover:opacity-100 text-gray-400 hover:text-[#7719aa] px-1.5 py-0.5 rounded"
+                  title="Edit / Urutkan / Hapus Group"
+                >
+                  <i class="fa-solid fa-ellipsis-vertical text-xs"></i>
+                </button>
+              </div>
+            </div>
+
+            <div class="${grp.expanded ? 'block' : 'hidden'} pl-4 border-l border-gray-300 ml-3 space-y-0.5 mt-0.5">
+        `;
+
+        if (grp.sections.length === 0) {
+          html += `
+            <div class="py-1.5 px-2 text-[11px] text-gray-400 italic">
+              Group kosong (tarik section ke sini atau klik +)
+            </div>
+          `;
+        } else {
+          grp.sections.forEach(sec => {
+            const isActive = sec.id === appData.activeSectionId;
+            html += `
+              <div
+                draggable="true"
+                ondragstart="handleDragStart(event, '${sec.id}')"
+                ondragend="handleDragEnd(event)"
+                onclick="selectSection('${sec.id}')"
+                class="group flex items-center justify-between px-2 py-1.5 rounded cursor-pointer transition ${isActive ? 'bg-white font-semibold shadow-2xs text-gray-900' : 'hover:bg-gray-200/70 text-gray-700'}"
+              >
+                <div class="flex items-center space-x-2.5 min-w-0">
+                  <span class="section-pill" style="background-color: ${sec.color}"></span>
+                  <span class="truncate">${escapeHtml(sec.name)}</span>
+                </div>
+                <button
+                  onclick="openEditSectionModal(event, '${sec.id}')"
+                  class="opacity-70 md:opacity-0 group-hover:opacity-100 text-gray-400 hover:text-[#7719aa] px-1.5 py-0.5 rounded"
+                  title="Edit / Pindahkan Section"
+                >
+                  <i class="fa-solid fa-ellipsis-vertical text-xs"></i>
+                </button>
+              </div>
+            `;
+          });
+        }
+
+        html += `
+            </div>
+          </div>
+        `;
+      });
+
+      container.innerHTML = html;
+    }
+
+    // Render Middle Pages List
+    function renderPagesList() {
+      const container = document.getElementById('pagesListContainer');
+      const loc = findSectionLocation(appData.activeSectionId);
+
+      if (!loc && searchQuery.trim() === '') {
+        document.getElementById('currentSectionLabel').textContent = 'Belum ada Section dipilih';
+        document.getElementById('mobileBreadcrumbSection').textContent = 'Pilih Section';
+        document.getElementById('pageCountBadge').textContent = '0';
+        container.innerHTML = `
+          <div class="text-center py-8 px-3 text-xs text-gray-400">
+            Pilih atau buat <b>Section</b> terlebih dahulu.
+          </div>
+        `;
+        return;
+      }
+
+      let pagesToDisplay = [];
+
+      if (searchQuery.trim() !== '') {
+        const q = searchQuery.toLowerCase();
+        document.getElementById('currentSectionLabel').textContent = `Pencarian: "${searchQuery}"`;
+        getAllSectionsFlat().forEach(({ section }) => {
+          section.pages.forEach(p => {
+            const plain = p.content.replace(/<[^>]+>/g, ' ').toLowerCase();
+            if ((p.title || '').toLowerCase().includes(q) || plain.includes(q)) {
+              pagesToDisplay.push({ page: p, sectionId: section.id, sectionName: section.name });
+            }
+          });
+        });
+      } else if (loc) {
+        const breadcrumb = loc.parentGroup ? `${loc.parentGroup.name} › ${loc.section.name}` : loc.section.name;
+        document.getElementById('currentSectionLabel').textContent = breadcrumb;
+        document.getElementById('mobileBreadcrumbSection').textContent = loc.section.name;
+        pagesToDisplay = loc.section.pages.map(p => ({ page: p, sectionId: loc.section.id, sectionName: null }));
+      }
+
+      document.getElementById('pageCountBadge').textContent = pagesToDisplay.length;
+
+      if (pagesToDisplay.length === 0) {
+        container.innerHTML = `
+          <div class="text-center py-8 px-3 text-xs text-gray-400">
+            Belum ada halaman di section ini.<br/>Klik <b>Add Page</b> di atas untuk menambah halaman.
+          </div>
+        `;
+        return;
+      }
+
+      let html = '';
+      pagesToDisplay.forEach(item => {
+        const p = item.page;
+        const isActive = p.id === appData.activePageId;
+        const titleText = p.title && p.title.trim() !== '' ? p.title : 'Untitled Page';
+        html += `
+          <div
+            onclick="selectPage('${item.sectionId}', '${p.id}')"
+            class="group flex items-center justify-between px-3 py-2 rounded cursor-pointer transition ${isActive ? 'bg-[#e1dfdd] font-semibold text-gray-900' : 'hover:bg-gray-200/60 text-gray-700'}"
+          >
+            <div class="min-w-0 flex-1">
+              <div class="truncate text-xs sm:text-[13px]">${escapeHtml(titleText)}</div>
+              ${item.sectionName ? `<div class="text-[10px] text-[#7719aa] truncate mt-0.5">${escapeHtml(item.sectionName)}</div>` : ''}
+            </div>
+            <button
+              onclick="quickMoveOrDeletePage(event, '${item.sectionId}', '${p.id}')"
+              class="opacity-70 md:opacity-0 group-hover:opacity-100 text-gray-400 hover:text-[#7719aa] px-1.5 py-0.5 rounded ml-1"
+              title="Pindahkan / Atur Halaman"
+            >
+              <i class="fa-solid fa-ellipsis-vertical text-xs"></i>
+            </button>
+          </div>
+        `;
+      });
+
+      container.innerHTML = html;
+    }
+
+    // Render Right Editor Canvas
+    function renderActivePage() {
+      const loc = findSectionLocation(appData.activeSectionId);
+      const emptyState = document.getElementById('emptyCanvasState');
+      const editorContainer = document.getElementById('editorContainer');
+      const movePageBtn = document.getElementById('movePageBtn');
+      const deletePageBtn = document.getElementById('deletePageBtn');
+      const emptyAddPageBtn = document.getElementById('emptyAddPageBtn');
+
+      if (!loc) {
+        emptyState.classList.remove('hidden');
+        editorContainer.classList.add('hidden');
+        movePageBtn.classList.add('hidden');
+        deletePageBtn.classList.add('hidden');
+        emptyAddPageBtn.classList.add('hidden');
+        document.getElementById('emptyStateTitle').textContent = 'Notebook Masih Kosong';
+        document.getElementById('emptyStateDesc').textContent = 'Silakan buat Section atau Section Group baru untuk mulai membuat halaman catatan.';
+        document.getElementById('headerWindowTitle').textContent = `${appData.notebookName} - OneNote`;
+        return;
+      }
+
+      let activePage = loc.section.pages.find(p => p.id === appData.activePageId);
+      if (!activePage && loc.section.pages.length > 0) {
+        activePage = loc.section.pages[0];
+        appData.activePageId = activePage.id;
+      }
+
+      if (!activePage) {
+        emptyState.classList.remove('hidden');
+        editorContainer.classList.add('hidden');
+        movePageBtn.classList.add('hidden');
+        deletePageBtn.classList.add('hidden');
+        emptyAddPageBtn.classList.remove('hidden');
+        document.getElementById('emptyStateTitle').textContent = `Section "${loc.section.name}" Kosong`;
+        document.getElementById('emptyStateDesc').textContent = 'Klik tombol "+ Add Page" untuk membuat halaman pertama di section ini.';
+        document.getElementById('headerWindowTitle').textContent = `${loc.section.name} - OneNote`;
+        return;
+      }
+
+      emptyState.classList.add('hidden');
+      editorContainer.classList.remove('hidden');
+      movePageBtn.classList.remove('hidden');
+      deletePageBtn.classList.remove('hidden');
+
+      document.getElementById('pageTitleInput').value = activePage.title;
+      document.getElementById('pageDateText').textContent = activePage.date;
+      document.getElementById('pageTimeText').textContent = activePage.time;
+      document.getElementById('noteEditor').innerHTML = activePage.content;
+      document.getElementById('headerWindowTitle').textContent = `${activePage.title || 'Untitled Page'} - OneNote`;
+    }
+
+    function renderAll() {
+      renderSectionsTree();
+      renderPagesList();
+      renderActivePage();
+    }
+
+    // Notebook Rename
+    function renameNotebookPrompt() {
+      const newName = prompt('Nama Notebook:', appData.notebookName);
+      if (newName !== null && newName.trim() !== '') {
+        appData.notebookName = newName.trim();
+        saveData();
+        renderAll();
+      }
+    }
+
+    // Group & Section Selection
+    function toggleGroup(groupId) {
+      const grp = appData.groups.find(g => g.id === groupId);
+      if (grp) {
+        grp.expanded = !grp.expanded;
+        saveData();
+        renderSectionsTree();
+      }
+    }
+
+    function selectSection(sectionId) {
+      appData.activeSectionId = sectionId;
+      const loc = findSectionLocation(sectionId);
+      if (loc && loc.section.pages.length > 0) {
+        appData.activePageId = loc.section.pages[0].id;
+      } else {
+        appData.activePageId = null;
+      }
+      saveData();
+      renderAll();
+
+      if (window.innerWidth < 768) {
+        openMobilePages();
+      }
+    }
+
+    function selectQuickNotes() {
+      selectSection(appData.quickNotes.id);
+    }
+
+    function selectPage(sectionId, pageId) {
+      appData.activeSectionId = sectionId;
+      appData.activePageId = pageId;
+      saveData();
+      renderAll();
+      if (window.innerWidth < 768) {
+        closeMobilePanels();
+      }
+    }
+
+    // CRUD SECTION (Create, Edit, Move to Group/Root, Reorder, Delete)
+    function populateGroupSelectDropdown(selectedValue = 'ROOT') {
+      const select = document.getElementById('sectionParentSelect');
+      let html = `<option value="ROOT">-- Di Luar / Root Notebook --</option>`;
+      appData.groups.forEach(g => {
+        html += `<option value="${g.id}">Folder Group: ${escapeHtml(g.name)}</option>`;
+      });
+      select.innerHTML = html;
+      select.value = selectedValue;
+    }
+
+    function openSectionModal(defaultParent = 'ROOT') {
+      editingSectionId = null;
+      document.getElementById('sectionModalTitle').textContent = 'Buat Section Baru';
+      document.getElementById('sectionNameInput').value = '';
+      document.getElementById('sectionEditExtraActions').classList.add('hidden');
+      populateGroupSelectDropdown(defaultParent);
+      selectTabColor('#7719aa');
+      document.getElementById('sectionModal').classList.remove('hidden');
+      document.getElementById('sectionModal').classList.add('flex');
+      setTimeout(() => document.getElementById('sectionNameInput').focus(), 50);
+    }
+
+    function openSectionModalForGroup(event, groupId) {
+      event.stopPropagation();
+      openSectionModal(groupId);
+    }
+
+    function openEditSectionModal(event, sectionId) {
+      event.stopPropagation();
+      const loc = findSectionLocation(sectionId);
+      if (!loc || loc.parentType === 'QUICK') return;
+
+      editingSectionId = sectionId;
+      document.getElementById('sectionModalTitle').textContent = 'Edit / Pindahkan Section';
+      document.getElementById('sectionNameInput').value = loc.section.name;
+      const currentParent = loc.parentType === 'GROUP' ? loc.parentGroup.id : 'ROOT';
+      populateGroupSelectDropdown(currentParent);
+      selectTabColor(loc.section.color);
+      document.getElementById('sectionEditExtraActions').classList.remove('hidden');
+
+      document.getElementById('sectionModal').classList.remove('hidden');
+      document.getElementById('sectionModal').classList.add('flex');
+    }
+
+    function closeSectionModal() {
+      document.getElementById('sectionModal').classList.add('hidden');
+      document.getElementById('sectionModal').classList.remove('flex');
+      editingSectionId = null;
+    }
+
+    function selectTabColor(color) {
+      selectedTabColor = color;
+      const buttons = document.querySelectorAll('#colorPickerRow button');
+      buttons.forEach(btn => {
+        btn.classList.remove('ring-2', 'ring-offset-1', 'ring-gray-800');
+        if (btn.getAttribute('onclick').includes(color)) {
+          btn.classList.add('ring-2', 'ring-offset-1', 'ring-gray-800');
+        }
+      });
+    }
+
+    function saveSectionModal() {
+      const name = document.getElementById('sectionNameInput').value.trim();
+      const targetParentId = document.getElementById('sectionParentSelect').value;
+      if (!name) {
+        alert('Nama section tidak boleh kosong.');
+        return;
+      }
+
+      if (!editingSectionId) {
+        // CREATE NEW SECTION
+        const newSec = {
+          id: 'sec_' + Date.now(),
+          name,
+          color: selectedTabColor,
+          pages: []
+        };
+
+        if (targetParentId === 'ROOT') {
+          appData.rootSections.push(newSec);
+        } else {
+          const grp = appData.groups.find(g => g.id === targetParentId);
+          if (grp) {
+            grp.expanded = true;
+            grp.sections.push(newSec);
+          }
+        }
+
+        appData.activeSectionId = newSec.id;
+        appData.activePageId = null;
+      } else {
+        // UPDATE & MOVE EXISTING SECTION
+        const loc = findSectionLocation(editingSectionId);
+        if (loc) {
+          loc.section.name = name;
+          loc.section.color = selectedTabColor;
+
+          const currentParentId = loc.parentType === 'GROUP' ? loc.parentGroup.id : 'ROOT';
+          if (currentParentId !== targetParentId) {
+            moveSectionToTarget(editingSectionId, targetParentId);
+          }
+        }
+      }
+
+      saveData();
+      closeSectionModal();
+      renderAll();
+    }
+
+    function moveSectionToTarget(sectionId, targetParentId) {
+      const loc = findSectionLocation(sectionId);
+      if (!loc || loc.parentType === 'QUICK') return;
+
+      // Remove from old location
+      loc.list.splice(loc.index, 1);
+
+      // Add to new location
+      if (targetParentId === 'ROOT') {
+        appData.rootSections.push(loc.section);
+      } else {
+        const targetGrp = appData.groups.find(g => g.id === targetParentId);
+        if (targetGrp) {
+          targetGrp.expanded = true;
+          targetGrp.sections.push(loc.section);
+        } else {
+          appData.rootSections.push(loc.section);
+        }
+      }
+    }
+
+    function reorderEditingSection(direction) {
+      if (!editingSectionId) return;
+      const loc = findSectionLocation(editingSectionId);
+      if (!loc) return;
+
+      const newIndex = loc.index + direction;
+      if (newIndex < 0 || newIndex >= loc.list.length) return;
+
+      const temp = loc.list[loc.index];
+      loc.list[loc.index] = loc.list[newIndex];
+      loc.list[newIndex] = temp;
+
+      saveData();
+      renderSectionsTree();
+    }
+
+    function deleteEditingSection() {
+      if (!editingSectionId) return;
+      const loc = findSectionLocation(editingSectionId);
+      if (!loc) return;
+
+      if (!confirm(`Hapus section "${loc.section.name}" beserta seluruh halaman di dalamnya?`)) return;
+
+      loc.list.splice(loc.index, 1);
+
+      if (appData.activeSectionId === editingSectionId) {
+        const remaining = getAllSectionsFlat().filter(x => !x.section.isQuickNote);
+        appData.activeSectionId = remaining.length ? remaining[0].section.id : null;
+        appData.activePageId = null;
+      }
+
+      saveData();
+      closeSectionModal();
+      renderAll();
+    }
+
+    // HTML5 DRAG & DROP FOR MOVING SECTIONS BETWEEN GROUPS & ROOT
+    function handleDragStart(event, sectionId) {
+      draggedSectionId = sectionId;
+      event.dataTransfer.setData('text/plain', sectionId);
+      document.getElementById('rootDropZone').classList.remove('hidden');
+    }
+
+    function handleDragEnd() {
+      draggedSectionId = null;
+      document.getElementById('rootDropZone').classList.add('hidden');
+      document.querySelectorAll('.drag-over-target').forEach(el => el.classList.remove('drag-over-target'));
+    }
+
+    function handleDragOver(event) {
+      event.preventDefault();
+      event.currentTarget.classList.add('drag-over-target');
+    }
+
+    function handleDragLeave(event) {
+      event.currentTarget.classList.remove('drag-over-target');
+    }
+
+    function handleDropToGroup(event, groupId) {
+      event.preventDefault();
+      event.stopPropagation();
+      event.currentTarget.classList.remove('drag-over-target');
+      const secId = draggedSectionId || event.dataTransfer.getData('text/plain');
+      if (!secId) return;
+
+      moveSectionToTarget(secId, groupId);
+      saveData();
+      renderAll();
+    }
+
+    function handleDropToRoot(event) {
+      event.preventDefault();
+      event.currentTarget.classList.remove('drag-over-target');
+      const secId = draggedSectionId || event.dataTransfer.getData('text/plain');
+      if (!secId) return;
+
+      moveSectionToTarget(secId, 'ROOT');
+      saveData();
+      renderAll();
+    }
+
+    // CRUD SECTION GROUP (Create, Rename, Reorder, Delete)
+    function openGroupModal() {
+      editingGroupId = null;
+      document.getElementById('groupModalTitle').textContent = 'Buat Section Group Baru';
+      document.getElementById('groupNameInput').value = '';
+      document.getElementById('groupEditExtraActions').classList.add('hidden');
+      document.getElementById('groupModal').classList.remove('hidden');
+      document.getElementById('groupModal').classList.add('flex');
+      setTimeout(() => document.getElementById('groupNameInput').focus(), 50);
+    }
+
+    function openEditGroupModal(event, groupId) {
+      event.stopPropagation();
+      const grp = appData.groups.find(g => g.id === groupId);
+      if (!grp) return;
+
+      editingGroupId = groupId;
+      document.getElementById('groupModalTitle').textContent = 'Edit / Urutkan Section Group';
+      document.getElementById('groupNameInput').value = grp.name;
+      document.getElementById('groupEditExtraActions').classList.remove('hidden');
+      document.getElementById('groupModal').classList.remove('hidden');
+      document.getElementById('groupModal').classList.add('flex');
+    }
+
+    function closeGroupModal() {
+      document.getElementById('groupModal').classList.add('hidden');
+      document.getElementById('groupModal').classList.remove('flex');
+      editingGroupId = null;
+    }
+
+    function saveGroupModal() {
+      const name = document.getElementById('groupNameInput').value.trim();
+      if (!name) {
+        alert('Nama Section Group tidak boleh kosong.');
+        return;
+      }
+
+      if (!editingGroupId) {
+        appData.groups.push({
+          id: 'grp_' + Date.now(),
+          name,
+          expanded: true,
+          sections: []
+        });
+      } else {
+        const grp = appData.groups.find(g => g.id === editingGroupId);
+        if (grp) grp.name = name;
+      }
+
+      saveData();
+      closeGroupModal();
+      renderAll();
+    }
+
+    function reorderEditingGroup(direction) {
+      if (!editingGroupId) return;
+      const idx = appData.groups.findIndex(g => g.id === editingGroupId);
+      if (idx === -1) return;
+
+      const newIdx = idx + direction;
+      if (newIdx < 0 || newIdx >= appData.groups.length) return;
+
+      const temp = appData.groups[idx];
+      appData.groups[idx] = appData.groups[newIdx];
+      appData.groups[newIdx] = temp;
+
+      saveData();
+      renderSectionsTree();
+    }
+
+    function deleteEditingGroup() {
+      if (!editingGroupId) return;
+      const idx = appData.groups.findIndex(g => g.id === editingGroupId);
+      if (idx === -1) return;
+
+      const grp = appData.groups[idx];
+      if (!confirm(`Hapus folder group "${grp.name}"? (Section di dalamnya akan dipindahkan ke Root agar tidak hilang)`)) return;
+
+      // Move child sections safely to Root
+      if (grp.sections.length > 0) {
+        appData.rootSections.push(...grp.sections);
+      }
+      appData.groups.splice(idx, 1);
+
+      saveData();
+      closeGroupModal();
+      renderAll();
+    }
+
+    // CRUD & MOVE PAGE
+    function addNewPage() {
+      let loc = findSectionLocation(appData.activeSectionId);
+
+      // If no section exists yet, auto-create a first section so the user can write immediately
+      if (!loc) {
+        const firstSec = {
+          id: 'sec_' + Date.now(),
+          name: 'General Notes',
+          color: '#7719aa',
+          pages: []
+        };
+        appData.rootSections.push(firstSec);
+        appData.activeSectionId = firstSec.id;
+        loc = findSectionLocation(firstSec.id);
+      }
+
+      const now = new Date();
+      const newPage = {
+        id: 'page_' + Date.now(),
+        title: '',
+        date: now.toLocaleDateString('en-GB', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' }),
+        time: now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+        content: ''
+      };
+
+      loc.section.pages.push(newPage);
+      appData.activePageId = newPage.id;
+      saveData();
+      renderAll();
+      closeMobilePanels();
+
+      setTimeout(() => {
+        const input = document.getElementById('pageTitleInput');
+        if (input) input.focus();
+      }, 50);
+    }
+
+    function updateCurrentPageTitle(val) {
+      const loc = findSectionLocation(appData.activeSectionId);
+      if (!loc) return;
+      const page = loc.section.pages.find(p => p.id === appData.activePageId);
+      if (page) {
+        page.title = val;
+        document.getElementById('headerWindowTitle').textContent = `${val || 'Untitled Page'} - OneNote`;
+        saveData();
+        renderPagesList();
+      }
+    }
+
+    function updateCurrentPageContent() {
+      const loc = findSectionLocation(appData.activeSectionId);
+      if (!loc) return;
+      const page = loc.section.pages.find(p => p.id === appData.activePageId);
+      if (page) {
+        page.content = document.getElementById('noteEditor').innerHTML;
+        saveData();
+      }
+    }
+
+    function updateCurrentPageMeta() {
+      const loc = findSectionLocation(appData.activeSectionId);
+      if (!loc) return;
+      const page = loc.section.pages.find(p => p.id === appData.activePageId);
+      if (page) {
+        page.date = document.getElementById('pageDateText').textContent.trim();
+        page.time = document.getElementById('pageTimeText').textContent.trim();
+        saveData();
+      }
+    }
+
+    function deleteCurrentPage() {
+      const loc = findSectionLocation(appData.activeSectionId);
+      if (!loc) return;
+      const page = loc.section.pages.find(p => p.id === appData.activePageId);
+      if (!page) return;
+
+      if (confirm(`Hapus halaman "${page.title || 'Untitled Page'}"?`)) {
+        loc.section.pages = loc.section.pages.filter(p => p.id !== appData.activePageId);
+        appData.activePageId = loc.section.pages.length ? loc.section.pages[0].id : null;
+        saveData();
+        renderAll();
+      }
+    }
+
+    function quickMoveOrDeletePage(event, sectionId, pageId) {
+      event.stopPropagation();
+      appData.activeSectionId = sectionId;
+      appData.activePageId = pageId;
+      renderAll();
+      openMovePageModal();
+    }
+
+    function openMovePageModal() {
+      const loc = findSectionLocation(appData.activeSectionId);
+      if (!loc || !appData.activePageId) return;
+
+      const select = document.getElementById('movePageTargetSelect');
+      let html = '';
+      getAllSectionsFlat().forEach(({ section, groupName }) => {
+        const label = groupName ? `${groupName} › ${section.name}` : section.name;
+        html += `<option value="${section.id}">${escapeHtml(label)}</option>`;
+      });
+      select.innerHTML = html;
+      select.value = appData.activeSectionId;
+
+      document.getElementById('movePageModal').classList.remove('hidden');
+      document.getElementById('movePageModal').classList.add('flex');
+    }
+
+    function closeMovePageModal() {
+      document.getElementById('movePageModal').classList.add('hidden');
+      document.getElementById('movePageModal').classList.remove('flex');
+    }
+
+    function confirmMovePage() {
+      const targetSecId = document.getElementById('movePageTargetSelect').value;
+      if (!targetSecId || targetSecId === appData.activeSectionId) {
+        closeMovePageModal();
+        return;
+      }
+
+      const sourceLoc = findSectionLocation(appData.activeSectionId);
+      const targetLoc = findSectionLocation(targetSecId);
+      if (!sourceLoc || !targetLoc) return;
+
+      const pageIdx = sourceLoc.section.pages.findIndex(p => p.id === appData.activePageId);
+      if (pageIdx === -1) return;
+
+      const [movedPage] = sourceLoc.section.pages.splice(pageIdx, 1);
+      targetLoc.section.pages.push(movedPage);
+
+      appData.activeSectionId = targetSecId;
+      appData.activePageId = movedPage.id;
+
+      saveData();
+      closeMovePageModal();
+      renderAll();
+    }
+
+    function reorderCurrentPage(direction) {
+      const loc = findSectionLocation(appData.activeSectionId);
+      if (!loc || !appData.activePageId) return;
+
+      const idx = loc.section.pages.findIndex(p => p.id === appData.activePageId);
+      if (idx === -1) return;
+
+      const newIdx = idx + direction;
+      if (newIdx < 0 || newIdx >= loc.section.pages.length) return;
+
+      const temp = loc.section.pages[idx];
+      loc.section.pages[idx] = loc.section.pages[newIdx];
+      loc.section.pages[newIdx] = temp;
+
+      saveData();
+      renderPagesList();
+    }
+
+    function sortPagesAlpha() {
+      const loc = findSectionLocation(appData.activeSectionId);
+      if (!loc) return;
+      loc.section.pages.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+      saveData();
+      renderPagesList();
+    }
+
+    // Editor Formatting Commands
+    function execCmd(command, value = null) {
+      document.getElementById('noteEditor').focus();
+      document.execCommand(command, false, value);
+      updateCurrentPageContent();
+    }
+
+    function highlightSelection() {
+      document.getElementById('noteEditor').focus();
+      document.execCommand('hiliteColor', false, '#fef08a');
+      updateCurrentPageContent();
+    }
+
+    function insertChecklist() {
+      const editor = document.getElementById('noteEditor');
+      editor.focus();
+      const html = `<div><label class="inline-flex items-center space-x-2 cursor-pointer"><input type="checkbox" class="rounded text-[#7719aa]" /><span>Item tugas...</span></label></div>`;
+      document.execCommand('insertHTML', false, html);
+      updateCurrentPageContent();
+    }
+
+    function insertCodeBlock() {
+      const editor = document.getElementById('noteEditor');
+      editor.focus();
+      const html = `<pre>// Tulis kode atau perintah CLI di sini</pre><p><br></p>`;
+      document.execCommand('insertHTML', false, html);
+      updateCurrentPageContent();
+    }
+
+    function toggleFormattingBar() {
+      document.getElementById('formattingBar').classList.toggle('hidden');
+    }
+
+    // Search
+    function handleSearch(val) {
+      searchQuery = val;
+      const clearBtn = document.getElementById('clearSearchBtn');
+      if (val.trim() !== '') {
+        clearBtn.classList.remove('hidden');
+      } else {
+        clearBtn.classList.add('hidden');
+      }
+      renderPagesList();
+    }
+
+    function clearSearch() {
+      searchQuery = '';
+      document.getElementById('globalSearchInput').value = '';
+      document.getElementById('clearSearchBtn').classList.add('hidden');
+      renderPagesList();
+    }
+
+    // Responsive Layout & Drawers
+    function toggleFullCanvas() {
+      isFullCanvas = !isFullCanvas;
+      const left = document.getElementById('leftSidebar');
+      const middle = document.getElementById('middlePagesPane');
+      const icon = document.getElementById('expandIcon');
+
+      if (isFullCanvas) {
+        left.classList.add('md:hidden');
+        middle.classList.add('md:hidden');
+        icon.className = 'fa-solid fa-down-left-and-up-right-to-center text-[#7719aa]';
+      } else {
+        left.classList.remove('md:hidden');
+        middle.classList.remove('md:hidden');
+        icon.className = 'fa-solid fa-up-right-and-down-left-from-center';
+      }
+    }
+
+    function toggleDesktopSidebar() {
+      document.getElementById('leftSidebar').classList.toggle('md:hidden');
+    }
+
+    function toggleMobileSidebar() {
+      const left = document.getElementById('leftSidebar');
+      if (left.classList.contains('-translate-x-full')) {
+        openMobileSections();
+      } else {
+        closeMobilePanels();
+      }
+    }
+
+    function openMobileSections() {
+      document.getElementById('mobileOverlay').classList.remove('hidden');
+      document.getElementById('leftSidebar').classList.remove('-translate-x-full');
+      document.getElementById('middlePagesPane').classList.add('-translate-x-full');
+    }
+
+    function openMobilePages() {
+      document.getElementById('mobileOverlay').classList.remove('hidden');
+      document.getElementById('leftSidebar').classList.add('-translate-x-full');
+      document.getElementById('middlePagesPane').classList.remove('-translate-x-full');
+    }
+
+    function closeMobilePanels() {
+      document.getElementById('mobileOverlay').classList.add('hidden');
+      document.getElementById('leftSidebar').classList.add('-translate-x-full');
+      document.getElementById('middlePagesPane').classList.add('-translate-x-full');
+    }
+
+    // Sticky Notes & Clipboard
+    function toggleStickyModal() {
+      const modal = document.getElementById('stickyModal');
+      modal.classList.toggle('hidden');
+      modal.classList.toggle('flex');
+    }
+
+    function saveStickyNote(val) {
+      localStorage.setItem(STICKY_KEY, val);
+    }
+
+    function loadStickyNote() {
+      const saved = localStorage.getItem(STICKY_KEY);
+      if (saved !== null) {
+        document.getElementById('stickyTextarea').value = saved;
+      }
+    }
+
+    function copyCurrentNote() {
+      const title = document.getElementById('pageTitleInput').value;
+      const body = document.getElementById('noteEditor').innerText;
+      navigator.clipboard.writeText(`${title}\n\n${body}`);
+    }
+
+    // Backup / Restore / Reset Clean
+    function openBackupModal() {
+      document.getElementById('backupModal').classList.remove('hidden');
+      document.getElementById('backupModal').classList.add('flex');
+    }
+
+    function closeBackupModal() {
+      document.getElementById('backupModal').classList.add('hidden');
+      document.getElementById('backupModal').classList.remove('flex');
+    }
+
+    function exportDataJSON() {
+      const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(appData, null, 2));
+      const a = document.createElement('a');
+      a.setAttribute('href', dataStr);
+      a.setAttribute('download', `OneNote_Backup_${new Date().toISOString().slice(0, 10)}.json`);
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+
+    function importDataJSON(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const parsed = JSON.parse(e.target.result);
+          if (parsed && Array.isArray(parsed.groups)) {
+            appData = parsed;
+            if (!appData.quickNotes) {
+              appData.quickNotes = JSON.parse(JSON.stringify(emptyNotebookTemplate.quickNotes));
+            }
+            saveData();
+            renderAll();
+            closeBackupModal();
+          } else {
+            alert('Format file JSON tidak valid.');
+          }
+        } catch (err) {
+          alert('Gagal membaca file JSON.');
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    function clearAllData() {
+      if (confirm('Kosongkan seluruh Section Group, Section, dan Halaman kembali ke kondisi awal yang bersih?')) {
+        localStorage.removeItem(STORAGE_KEY);
+        appData = JSON.parse(JSON.stringify(emptyNotebookTemplate));
+        saveData();
+        renderAll();
+        closeBackupModal();
+      }
+    }
+
+    function escapeHtml(str) {
+      return String(str || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      renderAll();
+      loadStickyNote();
+    });
+  </script>
+</body>
+</html>
